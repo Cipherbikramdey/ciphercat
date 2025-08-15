@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>web-netcat</title>
+  <style>
+    body { font-family: 'Fira Code', monospace; margin: 0; padding: 20px; background-color: #0d0d0d; color: #00ff9f; }
+    h1 { color: #00ff9f; text-shadow: 0 0 8px #00ff9f, 0 0 16px #00ffaa; font-weight: 700; letter-spacing: 2px; border-bottom: 2px solid #00ffaa; padding-bottom: 8px; margin-bottom: 20px; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+    input, button, select, textarea { padding: 8px; font-size: 14px; border: none; outline: none; font-family: 'Fira Code', monospace; background-color: #111; color: #00ff9f; border: 1px solid #00ffaa; }
+    button { background-color: #111; cursor: pointer; transition: all 0.2s ease; }
+    button:hover { box-shadow: 0 0 10px #00ffaa, 0 0 20px #00ffaa; background-color: #0a0a0a; }
+    select { background-color: #111; }
+    #log { width: 100%; height: 320px; white-space: pre-wrap; border: 1px solid #00ffaa; padding: 8px; overflow: auto; background-color: #000; color: #00ff9f; font-size: 13px; line-height: 1.3em; box-shadow: inset 0 0 8px #00ffaa; }
+    #data { width: 100%; height: 100px; background-color: #000; color: #00ff9f; border: 1px solid #00ffaa; box-shadow: inset 0 0 8px #00ffaa; }
+    .mono { font-family: 'Fira Code', monospace; }
+    .pill { padding: 4px 10px; border: 1px solid #00ffaa; border-radius: 999px; font-size: 12px; background-color: #111; color: #00ff9f; box-shadow: 0 0 5px #00ffaa; }
+    .right { margin-left: auto; }
+    #log::-webkit-scrollbar, #data::-webkit-scrollbar { width: 8px; }
+    #log::-webkit-scrollbar-thumb, #data::-webkit-scrollbar-thumb { background: #00ffaa; }
+  </style>
+</head>
+<body>
+  <h1>💻 web-netcat</h1>
+  <div class="row">
+    <input id="host" class="mono" placeholder="host (e.g., 10.10.10.10)" />
+    <input id="port" type="number" min="1" max="65535" placeholder="port (e.g., 4444)"/>
+    <button id="connect">Connect</button>
+    <button id="disconnect" disabled>Disconnect</button>
+    <span id="status" class="pill">disconnected</span>
+  </div>
+
+  <div id="log" class="mono">[+] Ready. Waiting for connection...</div>
+
+  <div class="row">
+    <select id="mode">
+      <option value="text" selected>Send as text</option>
+      <option value="hex">Send as hex</option>
+      <option value="base64">Send as base64</option>
+    </select>
+    <button id="send" class="right" disabled>Send</button>
+  </div>
+  <textarea id="data" class="mono" placeholder="Type payload here. In hex mode: 41 42 0a"></textarea>
+
+  <script>
+    const logEl = document.getElementById('log');
+    const statusEl = document.getElementById('status');
+    const hostEl = document.getElementById('host');
+    const portEl = document.getElementById('port');
+    const connectBtn = document.getElementById('connect');
+    const disconnectBtn = document.getElementById('disconnect');
+    const sendBtn = document.getElementById('send');
+    const dataEl = document.getElementById('data');
+    const modeEl = document.getElementById('mode');
+
+    let ws = null;
+
+    function append(line) {
+      const atBottom = logEl.scrollTop + logEl.clientHeight >= logEl.scrollHeight - 4;
+      logEl.textContent += "\n" + line;
+      if (atBottom) logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function setStatus(text) { statusEl.textContent = text; }
+
+    function base64ToText(b64) { try { return atob(b64); } catch { return `[binary: ${b64.length} b64 chars]`; } }
+
+    connectBtn.onclick = () => {
+      const host = hostEl.value.trim();
+      const port = parseInt(portEl.value, 10);
+      if (!host || !port) { append('[!] Enter host and port'); return; }
+      ws = new WebSocket(`${location.protocol.replace('http','ws')}//${location.host}/ws?host=${encodeURIComponent(host)}&port=${port}`);
+      setStatus('connecting…');
+      connectBtn.disabled = true; disconnectBtn.disabled = false; sendBtn.disabled = false;
+
+      ws.onopen = () => { setStatus(`connected to ${host}:${port}`); append(`[+] connected to ${host}:${port}`); };
+      ws.onclose = () => { setStatus('disconnected'); append('[*] connection closed'); connectBtn.disabled = false; disconnectBtn.disabled = true; sendBtn.disabled = true; ws = null; };
+      ws.onerror = () => { append(`[!] websocket error`); };
+
+      ws.onmessage = (ev) => {
+        try {
+          const msg = JSON.parse(ev.data);
+          if (msg.type === 'data') append(`[<] ${base64ToText(msg.base64)}`);
+          else if (msg.type === 'status' || msg.type === 'info') append(`[*] ${msg.message}`);
+          else if (msg.type === 'error') append(`[!] ${msg.message}`);
+        } catch { append(`[?] ${ev.data}`); }
+      };
+    };
+
+    disconnectBtn.onclick = () => { if (ws) ws.close(); };
+
+    sendBtn.onclick = () => {
+      if (!ws) return;
+      const mode = modeEl.value;
+      const payload = { type: 'send', mode };
+      if (mode === 'text') payload.text = dataEl.value;
+      if (mode === 'hex') payload.hex = dataEl.value;
+      if (mode === 'base64') payload.base64 = dataEl.value;
+      ws.send(JSON.stringify(payload));
+      append(`[>] (${mode}) ${dataEl.value}`);
+      dataEl.select();
+    };
+
+    dataEl.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); sendBtn.click(); }
+    });
+  </script>
+</body>
+</html>
