@@ -70,7 +70,7 @@
       const host = hostEl.value.trim();
       const port = parseInt(portEl.value, 10);
       if (!host || !port) { append('[!] Enter host and port'); return; }
-      ws = new WebSocket(`${location.protocol.replace('http','ws')}//${location.host}/ws?host=${encodeURIComponent(host)}&port=${port}`);
+      alert('This is a static test version. Backend not connected.');
       setStatus('connecting…');
       connectBtn.disabled = true; disconnectBtn.disabled = false; sendBtn.disabled = false;
 
